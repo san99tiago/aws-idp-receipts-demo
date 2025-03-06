@@ -1,0 +1,21 @@
+{
+  "app": "make clean && make install && python3 cdk/app.py",
+  "context": {
+    "main_resources_name": "idp-receipts",
+    "tags": {
+      "Owner": "Santiago Garcia and Daniel Ayala",
+      "Source": "https://github.com/san99tiago/aws-idp-receipts-demo",
+      "Usage": "DEMO for a receipt IDP platform on top of AWS"
+    },
+    "app_config": {
+      "prod": {
+        "deployment_environment": "prod",
+        "log_level": "DEBUG",
+        "table_name": "receipts-idp-data",
+        "s3_bucket_name_prefix": "receipts-idp-data",
+        "api_gw_name": "receipts-idp",
+        "bedrock_llm_model_id": "us.amazon.nova-pro-v1:0"
+      }
+    }
+  }
+}
