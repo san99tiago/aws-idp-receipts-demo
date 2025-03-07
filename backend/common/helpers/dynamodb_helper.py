@@ -22,6 +22,18 @@ class DynamoDBHelper:
         self.dynamodb_resource = boto3.resource("dynamodb", endpoint_url=endpoint_url)
         self.table = self.dynamodb_resource.Table(self.table_name)
 
+    @staticmethod
+    def dynamodb_to_json(dynamodb_item: dict) -> dict:
+        """
+        Converts a DynamoDB formatted item to a plain JSON dict.
+        :param dynamodb_item (dict): Item in DynamoDB format.
+        :return (dict): Converted JSON dictionary.
+        """
+        from boto3.dynamodb.types import TypeDeserializer
+
+        deserializer = TypeDeserializer()
+        return {k: deserializer.deserialize(v) for k, v in dynamodb_item.items()}
+
     def get_item_by_pk_and_sk(self, partition_key: str, sort_key: str) -> dict:
         """
         Method to get a single DynamoDB item from the primary key (pk+sk).
@@ -47,7 +59,10 @@ class DynamoDBHelper:
                 TableName=self.table_name,
                 Key=primary_key_dict,
             )
-            return response["Item"] if "Item" in response else {}
+            if "Item" in response:
+                return self.dynamodb_to_json(response["Item"])
+            else:
+                return {}
 
         except ClientError as error:
             logger.error(
@@ -158,5 +173,26 @@ class DynamoDBHelper:
                 f"pk: {partition_key}."
                 f"sk: {sort_key}."
                 f"error: {str(error)}."
+            )
+            raise error
+
+    # TODO: add pagination!!!
+    def scan_all_items(self) -> list[dict]:
+        """
+        Method to scan all items in a DynamoDB table.
+        """
+        logger.info("Starting scan_all_items operation.")
+
+        try:
+            response = self.table.scan()
+            if "Items" in response:
+                return response["Items"]
+            else:
+                return []
+        except ClientError as error:
+            logger.error(
+                f"scan_all_items operation failed for: "
+                f"table_name: {self.table_name}."
+                f"error: {error}."
             )
             raise error
