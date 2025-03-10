@@ -1,5 +1,6 @@
 # Built-in imports
 import os
+from datetime import datetime, timezone
 
 # Own imports
 from common.logger import custom_logger
@@ -37,15 +38,26 @@ class SaveData(BaseStepFunction):
         document_id = str(ULID())
         self.event["document_id"] = document_id
 
+        # ISO 8601 timestamp for ordering
+        timestamp = datetime.now(timezone.utc).isoformat()
+        print(timestamp)
+
+        # Save document first version
         dynamodb_item = {
             "PK": f"DOCUMENT#{document_id}",
-            "SK": "VERSION#1",  # Hardcoded as '1' for now...
+            "SK": "VERSION#1",  # Intentionally hardcoded for now until versions supported
+            "GSI1PK": "ALL_DOCUMENTS",  # GSI1 Used for retrieving latest "N" documents by timestamp
+            "GSI1SK": f"CREATED_AT#{timestamp}",
+            "last_processed": timestamp,
             "data": self.event.get("response_process_document_json", "NOT_FOUND"),
             "input_type": self.event.get("input_type", "NOT_FOUND"),
             "correlation_id": self.event.get("correlation_id", "NOT_FOUND"),
-            "object_key": self.event.get("object_key", "NOT_FOUND"),
+            "s3_key_original_asset": self.event.get(
+                "s3_key_original_asset", "NOT_FOUND"
+            ),
             "input_extension": self.event.get("input_extension", "NOT_FOUND"),
             "s3_event_time": self.event.get("time", "NOT_FOUND"),
+            "status": "CREATED",
         }
         response = dynamodb_helper.put_item(dynamodb_item)
         logger.debug(f"Response from DynamoDB: {response}")

@@ -75,52 +75,66 @@ class DynamoDBHelper:
             raise error
 
     def query_by_pk_and_sk_begins_with(
-        self, partition_key: str, sort_key_portion: str
+        self,
+        partition_key: str,
+        sort_key_portion: str,
+        limit: int = 50,
+        gsi_index_name: str = None,
     ) -> list[dict]:
         """
         Method to run a query against DynamoDB with partition key and the sort
         key with <begins-with> functionality on it.
         :param partition_key (str): partition key value.
         :param sort_key_portion (str): sort key portion to use in query.
+        :param limit (int): limit of how many results to retrieve.
+        :param gsi_index_name (str): Optional name of the GSI to query.
         """
         logger.info(
-            f"Starting query_by_pk_and_sk_begins_with with"
-            f"pk: ({partition_key}) and sk: ({sort_key_portion})"
+            f"Starting query_items with pk: ({partition_key}), "
+            f"sk: ({sort_key_portion}), "
+            f"gsi_index_name: ({gsi_index_name})"
         )
 
         all_items = []
         try:
-            # The structure key for a single-table-design "PK" and "SK" naming
+            # Define the key condition for the query
             key_condition = Key("PK").eq(partition_key) & Key("SK").begins_with(
                 sort_key_portion
             )
-            limit = 50
 
-            # Initial query before pagination
-            response = self.table.query(
-                KeyConditionExpression=key_condition,
-                Limit=limit,
-            )
+            # If querying a GSI, adjust the key names
+            if gsi_index_name:
+                key_condition = Key("GSI1PK").eq(partition_key) & Key(
+                    "GSI1SK"
+                ).begins_with(sort_key_portion)
+
+            # Initial query
+            query_params = {
+                "KeyConditionExpression": key_condition,
+                "Limit": limit,
+            }
+            if gsi_index_name:
+                query_params["IndexName"] = gsi_index_name
+
+            response = self.table.query(**query_params)
             if "Items" in response:
                 all_items.extend(response["Items"])
 
-            # Pagination loop for possible following queries
+            # Handle pagination
             while "LastEvaluatedKey" in response:
-                response = self.table.query(
-                    KeyConditionExpression=key_condition,
-                    Limit=limit,
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self.table.query(**query_params)
                 if "Items" in response:
                     all_items.extend(response["Items"])
 
             return all_items
         except ClientError as error:
             logger.error(
-                f"query operation failed for: "
-                f"table_name: {self.table_name}."
-                f"pk: {partition_key}."
-                f"sort_key_portion: {sort_key_portion}."
+                f"Query operation failed for: "
+                f"table_name: {self.table_name}, "
+                f"pk: {partition_key}, "
+                f"sk: {sort_key_portion}, "
+                f"gsi_index_name: {gsi_index_name}, "
                 f"error: {error}."
             )
             raise error

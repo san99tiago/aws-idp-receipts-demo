@@ -37,7 +37,7 @@ class ProcessImage(BaseStepFunction):
 
         # TODO: Validate if Textract or Rekognition is worth it for the use case as Backup plan?
         self.process_image_from_s3(
-            s3_image_key=self.event.get("object_key"),
+            s3_image_key=self.event.get("s3_key_original_asset"),
         )
 
         self.logger.info("Processing image finished successfully")

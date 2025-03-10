@@ -102,6 +102,22 @@ class BackendStack(Stack):
             billing_mode=aws_dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
         )
+        # GSI1 used for retrieving documents in order
+        self.dynamodb_table.add_global_secondary_index(
+            index_name="GSI1",
+            partition_key=aws_dynamodb.Attribute(
+                name="GSI1PK", type=aws_dynamodb.AttributeType.STRING
+            ),
+            sort_key=aws_dynamodb.Attribute(
+                name="GSI1SK", type=aws_dynamodb.AttributeType.STRING
+            ),
+            projection_type=aws_dynamodb.ProjectionType.INCLUDE,  # Only used to retrieve IDs and S3 keys
+            non_key_attributes=[
+                "s3_key_original_asset",
+                "status",
+                "last_processed",
+            ],
+        )
         Tags.of(self.dynamodb_table).add("Name", self.app_config["table_name"])
 
     def create_lambda_layers(self) -> None:

@@ -34,16 +34,20 @@ class ValidateInput(BaseStepFunction):
         bucket_name = (
             self.event.get("detail", {}).get("bucket", {}).get("name", "NOT_FOUND")
         )
-        object_key = (
+        s3_key_original_asset = (
             self.event.get("detail", {}).get("object", {}).get("key", "NOT_FOUND")
         )
-        input_extension = object_key.split(".")[-1] if "." in object_key else "other"
+        input_extension = (
+            s3_key_original_asset.split(".")[-1]
+            if "." in s3_key_original_asset
+            else "other"
+        )
 
         self.logger.info(
-            f"Event details... bucket_name: {bucket_name}, object_key: {object_key}, input_extension: {input_extension}"
+            f"Event details... bucket_name: {bucket_name}, s3_key_original_asset: {s3_key_original_asset}, input_extension: {input_extension}"
         )
         self.event["bucket_name"] = bucket_name
-        self.event["object_key"] = object_key
+        self.event["s3_key_original_asset"] = s3_key_original_asset
         self.event["input_extension"] = input_extension
 
         # Categorize input based on extension

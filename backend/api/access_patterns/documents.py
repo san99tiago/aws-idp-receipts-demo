@@ -35,18 +35,25 @@ class Documents:
         """
         self.logger.info("Retrieving all DOCUMENT items for")
 
-        # Note: does not have pagination (for now...)
-        results = dynamodb_helper.scan_all_items()
+        # Return the latest X documents based on creation time (ordered)
+        results = dynamodb_helper.query_by_pk_and_sk_begins_with(
+            partition_key="ALL_DOCUMENTS",
+            sort_key_portion="CREATED_AT#",
+            limit=10,  # TODO: Enable parameter from HTTP request and pagination
+            gsi_index_name="GSI1",  # Intentional query GSI1 to get ordered documents
+        )
 
         # Filter results to ONLY return PK and SK
         filtered_results = [
             {
-                "PK": result.get("PK"),
-                "SK": result.get("SK"),
-                "object_key": result.get("object_key"),
+                "document_id": result.get("PK").split("#")[1],
+                "document_name": result.get("s3_key_original_asset"),
+                "status": result.get("status"),
+                "last_processed": result.get("last_processed"),
             }
             for result in results
         ]
+        # TODO: Add pagination capabilities... (next key, etc)
 
         self.logger.debug(filtered_results)
         self.logger.info(f"Items from query: {len(filtered_results)}")
@@ -59,11 +66,15 @@ class Documents:
         """
         self.logger.info(f"Retrieving DOCUMENT item by ULID: {ulid}.")
 
-        result = dynamodb_helper.get_item_by_pk_and_sk(
+        result = dynamodb_helper.query_by_pk_and_sk_begins_with(
             partition_key=f"DOCUMENT#{ulid}",
-            sort_key="VERSION#1",  # Hardcoded as '1' for now...
+            sort_key_portion="VERSION#",
+            limit=1,  # We only need the first item (LATEST)
         )
-        self.logger.debug(result, message_details="get_item_by_pk_and_sk_result")
+        result = (
+            result[0] if result else None
+        )  # Intentionally access first item (latest)
+        self.logger.debug(result, message_details="query_by_pk_and_sk_begins_with")
 
         if not result:
             self.logger.debug(
@@ -72,7 +83,7 @@ class Documents:
             return {}
 
         # Get S3 Key from DynamoDB item
-        s3_key = result.get("object_key")
+        s3_key = result.get("s3_key_original_asset")
 
         # Generate a pre-signed URL for the S3 Key
         self.logger.debug(f"Generating pre-signed URL for S3 Key: {s3_key}")
@@ -105,6 +116,8 @@ class Documents:
                 "status": "error",
                 "message": "not found",
             }
+
+        # TODO: Add patching of document
 
         return {
             "status": "success",

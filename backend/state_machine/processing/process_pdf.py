@@ -37,7 +37,7 @@ class ProcessPDF(BaseStepFunction):
 
         # TODO: Validate if Textract or other AWS services are worth it for the use case as Backup plan?
         self.process_pdf_from_s3(
-            s3_pdf_key=self.event.get("object_key"),
+            s3_pdf_key=self.event.get("s3_key_original_asset"),
         )
 
         self.logger.info("Processing PDF finished successfully")
