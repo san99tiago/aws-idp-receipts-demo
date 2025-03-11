@@ -87,7 +87,7 @@ class ProcessPDF(BaseStepFunction):
         ]
 
         # Configure inference parameters
-        inf_params = {"maxTokens": 300, "topP": 0.1, "topK": 20, "temperature": 0.3}
+        inf_params = {"maxTokens": 5000, "topP": 0.1, "topK": 20, "temperature": 0.3}
 
         # Create the native request
         native_request = {

@@ -77,7 +77,8 @@ async def patch_todo_item(
 
         documents = Documents(logger=logger)
         result = documents.patch_document(
-            ulid=document_id, document_data={"note": "Demo payload by Santi"}
+            ulid=document_id,
+            document_data=document_details,
         )
 
         logger.info("Finished patch_document_item() successfully")

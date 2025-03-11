@@ -1,21 +1,25 @@
 # Built-in imports
 import os
 import boto3
+from datetime import datetime, timezone
 from typing import Optional
 
 # External imports
-from fastapi import HTTPException
 from aws_lambda_powertools import Logger
 
 # Own imports
 from common.logger import custom_logger
 from common.helpers.dynamodb_helper import DynamoDBHelper
+from common.helpers.sqs_helper import SQSHelper
+
 
 # Initialize DynamoDB helper for item's abstraction
 TABLE_NAME = os.environ.get("TABLE_NAME")
 S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
+SQS_URL_AFTER_IDP_PROCESSING = os.environ.get("SQS_URL_AFTER_IDP_PROCESSING")
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL")  # Used for local testing
 dynamodb_helper = DynamoDBHelper(TABLE_NAME, ENDPOINT_URL)
+sqs_helper = SQSHelper(SQS_URL_AFTER_IDP_PROCESSING)
 s3_client = boto3.client("s3")  # TODO: Refactor to dedicated helper
 
 
@@ -39,7 +43,7 @@ class Documents:
         results = dynamodb_helper.query_by_pk_and_sk_begins_with(
             partition_key="ALL_DOCUMENTS",
             sort_key_portion="CREATED_AT#",
-            limit=10,  # TODO: Enable parameter from HTTP request and pagination
+            limit=30,  # TODO: Enable parameter from HTTP request and pagination
             gsi_index_name="GSI1",  # Intentional query GSI1 to get ordered documents
         )
 
@@ -117,11 +121,49 @@ class Documents:
                 "message": "not found",
             }
 
-        # TODO: Add patching of document
+        # ISO 8601 timestamp for ordering
+        timestamp = datetime.now(timezone.utc).isoformat()
+        print(timestamp)
+
+        document_data["status"] = "PAID"
+        document_data["last_processed"] = timestamp
+
+        # Note: internal dict data merged as follows to avoid data loss
+        data_dict_original = existing_document_item["data"]
+        data_dict_new = document_data["data"]
+
+        # Update new_data with caution first (internal level of dict)
+        new_data = data_dict_original | data_dict_new
+
+        # Update existing_document_item with new_data
+        document_data["data"] = new_data
+
+        # Update document with new data (PATCH new fields only)
+        new_data = existing_document_item | document_data
+
+        # Update DynamoDB item
+        result = dynamodb_helper.put_item(new_data)
+        self.logger.info(f"Response from DynamoDB: {result}")
+
+        # Send SQS Message for after IDP processing...
+        try:
+            response = sqs_helper.send_message(
+                {
+                    "document_id": ulid,
+                    "s3_key_original_asset": existing_document_item.get(
+                        "s3_key_original_asset"
+                    ),
+                    "correlation_id": existing_document_item.get("correlation_id"),
+                    "data": existing_document_item.get("data"),
+                }
+            )
+            self.logger.debug(f"Response from SQS: {response}")
+        except Exception as e:
+            self.logger.error(f"Error sending message to SQS: {e}")
 
         return {
             "status": "success",
-            "message": "Patch endpoint not supported yet, be ready for updates soon",
+            "message": f"Item patched successfully at {timestamp}",
         }
 
     def delete_document(self, ulid: str):

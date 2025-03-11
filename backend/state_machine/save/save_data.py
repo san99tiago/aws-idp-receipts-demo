@@ -40,7 +40,6 @@ class SaveData(BaseStepFunction):
 
         # ISO 8601 timestamp for ordering
         timestamp = datetime.now(timezone.utc).isoformat()
-        print(timestamp)
 
         # Save document first version
         dynamodb_item = {
@@ -57,10 +56,12 @@ class SaveData(BaseStepFunction):
             ),
             "input_extension": self.event.get("input_extension", "NOT_FOUND"),
             "s3_event_time": self.event.get("time", "NOT_FOUND"),
-            "status": "CREATED",
+            "status": "PENDING",
         }
+        logger.debug(f"Saving this item to DynamoDB: {dynamodb_item}")
+
         response = dynamodb_helper.put_item(dynamodb_item)
-        logger.debug(f"Response from DynamoDB: {response}")
+        logger.info(f"Response from DynamoDB: {response}")
 
         self.logger.info("Saving data finished successfully")
 

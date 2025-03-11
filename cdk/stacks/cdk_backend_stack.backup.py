@@ -587,7 +587,6 @@ class BackendStack(Stack):
             ),
             endpoint_types=[aws_apigw.EndpointType.REGIONAL],
             cloud_watch_role=False,
-            binary_media_types=["*/*"],  # To enable PUT binary requests (S3 put)
             proxy=False,  # Proxy disabled to have more control
         )
 
@@ -607,14 +606,14 @@ class BackendStack(Stack):
                     api=self.api, stage=self.api.deployment_stage
                 )
             ],
-            # throttle=aws_apigw.ThrottleSettings(
-            #     rate_limit=self.app_config["api_usage_plan_throttle_rate_limit"],
-            #     burst_limit=self.app_config["api_usage_plan_throttle_burst_limit"],
-            # ),
-            # quota=aws_apigw.QuotaSettings(
-            #     limit=self.app_config["api_usage_plan_quota_limit_day"],
-            #     period=aws_apigw.Period.DAY,
-            # ),
+            throttle=aws_apigw.ThrottleSettings(
+                rate_limit=self.app_config["api_usage_plan_throttle_rate_limit"],
+                burst_limit=self.app_config["api_usage_plan_throttle_burst_limit"],
+            ),
+            quota=aws_apigw.QuotaSettings(
+                limit=self.app_config["api_usage_plan_quota_limit_day"],
+                period=aws_apigw.Period.DAY,
+            ),
             description=f"Usage plan for {self.main_resources_name} API",
         )
         usage_plan.add_api_key(rest_api_key)
@@ -636,11 +635,6 @@ class BackendStack(Stack):
         )
         root_resource_documents = self.root_resource_v1.add_resource(
             "documents",
-            default_method_options=self.api_method_options_private,
-        )
-        root_resource_upload = self.root_resource_v1.add_resource("upload")
-        root_resource_file = root_resource_upload.add_resource(
-            "{filename}",
             default_method_options=self.api_method_options_private,
         )
 
@@ -667,56 +661,6 @@ class BackendStack(Stack):
             # default_method_options=self.api_method_options_private,
         )
 
-        # Configure PUT item to S3 object direct integration
-        role_api_gw = aws_iam.Role(
-            self,
-            "RESTAPI-ServiceRole",
-            description="IAM Role for API Gateway",
-            assumed_by=aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
-            path="/service-role/",
-        )
-        # Add action to put S3 Object to target S3 bucket
-        self.s3_bucket_receipts.grant_read_write(role_api_gw)
-
-        put_object_integration = aws_apigw.AwsIntegration(
-            service="s3",
-            integration_http_method="PUT",
-            path=f"{self.s3_bucket_receipts.bucket_name}/{{file}}",  # Converted to: {bucket-name}/{file}
-            options=aws_apigw.IntegrationOptions(
-                credentials_role=role_api_gw,
-                request_parameters={
-                    "integration.request.path.file": "method.request.path.filename",
-                    "integration.request.header.Accept": "method.request.header.Accept",
-                },
-                integration_responses=[
-                    aws_apigw.IntegrationResponse(
-                        status_code="200",
-                        response_parameters={
-                            "method.response.header.Content-Type": "integration.response.header.Content-Type",
-                        },
-                    )
-                ],
-            ),
-        )
-        root_resource_file.add_method(
-            "PUT",
-            put_object_integration,
-            authorization_type=aws_apigw.AuthorizationType.NONE,
-            method_responses=[
-                aws_apigw.MethodResponse(
-                    status_code="200",
-                    response_parameters={
-                        "method.response.header.Content-Type": True,
-                    },
-                )
-            ],
-            request_parameters={
-                "method.request.path.filename": True,
-                "method.request.header.Accept": True,
-                "method.request.header.Content-Type": True,
-            },
-        )
-
     def create_rest_api_2(self):
         """
         Method to create the REST-API Gateway 2 for exposing the "DOCUMENTS"
@@ -728,11 +672,15 @@ class BackendStack(Stack):
             "API-GW-Role",
             description="IAM Role for API Gateway",
             assumed_by=aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
-            path="/service-role/",
         )
 
         # Add action to put S3 Object to target S3 bucket
-        self.s3_bucket_receipts.grant_read_write(self.api_gw_role)
+        self.api_gw_role.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=["s3:PutObject"],
+                resources=[self.s3_bucket_receipts.bucket_arn + "/*"],
+            )
+        )
 
         # Create REST API-GW for Uploading S3 objects via AWS Direct Integration
         # Create IAM Role for API Gateway
@@ -745,7 +693,6 @@ class BackendStack(Stack):
                 stage_name=self.deployment_environment,
                 description=f"REST API 2 for {self.main_resources_name} in {self.deployment_environment} environment",
                 metrics_enabled=True,
-                logging_level=aws_apigw.MethodLoggingLevel.INFO,
             ),
             default_cors_preflight_options=aws_apigw.CorsOptions(
                 allow_origins=aws_apigw.Cors.ALL_ORIGINS,
@@ -758,9 +705,12 @@ class BackendStack(Stack):
         )
 
         # Define REST-API resources
-        root_resource_folder = self.api2.root.add_resource("{folder}")
-        self.root_resource_item = root_resource_folder.add_resource(
-            "{item}",
+        root_resource_api = self.api2.root.add_resource("api")
+        self.root_resource_v1 = root_resource_api.add_resource("v1")
+
+        # Endpoints ("files" with auth)
+        root_resource_files = self.root_resource_v1.add_resource(
+            "files",
             default_method_options=self.api_method_options_public,
         )
 
@@ -768,7 +718,7 @@ class BackendStack(Stack):
         put_object_integration = aws_apigw.AwsIntegration(
             service="s3",
             integration_http_method="PUT",
-            path="{bucket}/{object}",
+            path="{{bucket}}/{{object}}",
             options=aws_apigw.IntegrationOptions(
                 credentials_role=self.api_gw_role,
                 request_parameters={
@@ -786,7 +736,7 @@ class BackendStack(Stack):
                 ],
             ),
         )
-        self.root_resource_item.add_method(
+        root_resource_files.add_method(
             "PUT",
             put_object_integration,
             authorization_type=aws_apigw.AuthorizationType.NONE,
