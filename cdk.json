@@ -11,9 +11,10 @@
       "prod": {
         "deployment_environment": "prod",
         "log_level": "DEBUG",
+        "base_bank": "demobank",
         "table_name": "receipts-idp-data",
         "s3_bucket_name_prefix": "receipts-idp-data",
-        "api_gw_name": "receipts-idp",
+        "api_gw_name": "receipts-idp-final",
         "api_usage_plan_throttle_rate_limit": 10,
         "api_usage_plan_throttle_burst_limit": 10,
         "api_usage_plan_quota_limit_day": 100,

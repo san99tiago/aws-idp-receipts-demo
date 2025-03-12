@@ -16,8 +16,6 @@ def upload_pdf_to_s3(bucket_name, file_path, object_name=None, expiration=600) -
     :param bucket_name: The name of the S3 bucket.
     :param file_path: Path to the PDF file to upload.
     :param object_name: The S3 object name. If None, file_path's basename is used.
-    :param expiration: Time in seconds for the pre-signed URL to remain valid.
-    :return: The pre-signed URL or an error message.
     """
     try:
 
@@ -26,20 +24,11 @@ def upload_pdf_to_s3(bucket_name, file_path, object_name=None, expiration=600) -
             object_name = os.path.basename(file_path)
 
         # Upload the file
-        s3_client.upload_file(file_path, bucket_name, object_name)
+        result = s3_client.upload_file(file_path, bucket_name, object_name)
         logger.info(f"File uploaded successfully to {bucket_name}/{object_name}")
-
-        # Generate a pre-signed URL
-        presigned_url = s3_client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket_name, "Key": object_name},
-            ExpiresIn=expiration,
-        )
-        return presigned_url
-
-    except FileNotFoundError:
-        return "Error: The specified file was not found."
+        return result
     except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
         return f"An unexpected error occurred: {e}"
 
 

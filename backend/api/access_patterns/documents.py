@@ -90,7 +90,7 @@ class Documents:
         s3_key = result.get("s3_key_original_asset")
 
         # Generate a pre-signed URL for the S3 Key
-        self.logger.debug(f"Generating pre-signed URL for S3 Key: {s3_key}")
+        self.logger.debug(f"Generating pre-signed URL for ORIGINAL S3 Key: {s3_key}")
         presigned_url = s3_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": S3_BUCKET_NAME, "Key": s3_key},
@@ -98,10 +98,34 @@ class Documents:
         )
         self.logger.debug(presigned_url, message_details="presigned_url_result")
 
+        # If final asset present, return final asset
+        s3_final_asset_key = result.get("s3_key_final_asset")
+        if s3_final_asset_key:
+            try:
+                # Generate a pre-signed URL for the S3 Key
+                self.logger.debug(
+                    f"Generating pre-signed URL for FINAL S3 Key: {s3_final_asset_key}"
+                )
+                final_asset_presigned_url = s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": S3_BUCKET_NAME, "Key": s3_final_asset_key},
+                    ExpiresIn=3600,  # Image URL expires in 1 hour
+                )
+                self.logger.debug(
+                    final_asset_presigned_url, message_details="presigned_url_result"
+                )
+                result = result | {
+                    "final_asset_presigned_url": final_asset_presigned_url
+                }
+            except Exception as e:
+                self.logger.warning(f"Final asset not found: {e}")
+
         # Return document item and its corresponding presigned url
         return result | {"presigned_url": presigned_url}
 
-    def patch_document(self, ulid: str, document_data: dict):
+    def patch_document(
+        self, ulid: str, document_data: dict, send_sqs_message: bool = False
+    ):
         """
         Method to patch an existing DOCUMENT item.
         :param ulid (str): ULID for a specific DOCUMENT item.
@@ -123,7 +147,7 @@ class Documents:
 
         # ISO 8601 timestamp for ordering
         timestamp = datetime.now(timezone.utc).isoformat()
-        print(timestamp)
+        self.logger.debug(f"timestamp: {timestamp}")
 
         document_data["status"] = "PAID"
         document_data["last_processed"] = timestamp
@@ -146,20 +170,21 @@ class Documents:
         self.logger.info(f"Response from DynamoDB: {result}")
 
         # Send SQS Message for after IDP processing...
-        try:
-            response = sqs_helper.send_message(
-                {
-                    "document_id": ulid,
-                    "s3_key_original_asset": existing_document_item.get(
-                        "s3_key_original_asset"
-                    ),
-                    "correlation_id": existing_document_item.get("correlation_id"),
-                    "data": existing_document_item.get("data"),
-                }
-            )
-            self.logger.debug(f"Response from SQS: {response}")
-        except Exception as e:
-            self.logger.error(f"Error sending message to SQS: {e}")
+        if send_sqs_message:
+            try:
+                response = sqs_helper.send_message(
+                    {
+                        "document_id": ulid,
+                        "s3_key_original_asset": existing_document_item.get(
+                            "s3_key_original_asset"
+                        ),
+                        "correlation_id": existing_document_item.get("correlation_id"),
+                        "data": existing_document_item.get("data"),
+                    }
+                )
+                self.logger.debug(f"Response from SQS: {response}")
+            except Exception as e:
+                self.logger.error(f"Error sending message to SQS: {e}")
 
         return {
             "status": "success",

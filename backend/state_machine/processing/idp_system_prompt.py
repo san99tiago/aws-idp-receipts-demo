@@ -16,15 +16,17 @@ SYSTEM_PROMPT = """"
     "iva": XXX,
     "lugar": XXX
     "codigo_generacion": XXX,
-    "telefono": XXX,
+    "telefono_emisor": XXX,
+    "telefono_receptor": XXX,
     "tipo_establecimiento": XXX,
     "items": [
         {"cantidad": XXX, "unidad": XXX, "descripcion": XXX, "precio_unitario": XXX, "otros_montos": XXX, "descuento": XXX, "ventas_gravadas": XXX},
         {"cantidad": XXX, "unidad": XXX, "descripcion": XXX, "precio_unitario": XXX, "otros_montos": XXX, "descuento": XXX, "ventas_gravadas": XXX}
     ],
-    "correo_electronico_receptor": XXX,
     "correo_electronico_emisor": XXX,
+    "correo_electronico_receptor": XXX,
     "direccion_emisor": XXX,
+    "direccion_receptor": XXX,
     "valor_en_letras": <Generate_Text_Representation_Based_On_Total_Amount>
 }
 """

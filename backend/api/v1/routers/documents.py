@@ -79,6 +79,7 @@ async def patch_todo_item(
         result = documents.patch_document(
             ulid=document_id,
             document_data=document_details,
+            send_sqs_message=True,
         )
 
         logger.info("Finished patch_document_item() successfully")

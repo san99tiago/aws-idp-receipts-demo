@@ -137,6 +137,13 @@ class BackendStack(Stack):
             layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV2:71",
         )
 
+        # Layer for "Pillow" (for image generation, etc)
+        self.lambda_layer_pillow = aws_lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "Layer-Pillow",
+            layer_version_arn=f"arn:aws:lambda:{self.region}:770693421928:layer:Klayers-p311-Pillow:7",
+        )
+
         # Layer for "common" Python requirements (fastapi, pydantic, ...)
         self.lambda_layer_common = aws_lambda.LayerVersion(
             self,
@@ -208,6 +215,7 @@ class BackendStack(Stack):
             },
             layers=[
                 self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
                 self.lambda_layer_common,
             ],
         )
@@ -243,6 +251,7 @@ class BackendStack(Stack):
             },
             layers=[
                 self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
                 self.lambda_layer_common,
             ],
         )
@@ -266,9 +275,11 @@ class BackendStack(Stack):
                 "LOG_LEVEL": self.app_config["log_level"],
                 "TABLE_NAME": self.dynamodb_table.table_name,
                 "S3_BUCKET_NAME": self.s3_bucket_receipts.bucket_name,
+                "BASE_BANK": self.app_config["base_bank"],
             },
             layers=[
                 self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
                 self.lambda_layer_common,
             ],
             events=[
@@ -571,7 +582,7 @@ class BackendStack(Stack):
 
         self.api = aws_apigw.LambdaRestApi(
             self,
-            "RESTAPI",
+            "RESTAPI-Final",
             rest_api_name=rest_api_name,
             description=f"REST API Gateway for {self.main_resources_name}",
             handler=self.lambda_documents_api,
@@ -587,20 +598,19 @@ class BackendStack(Stack):
             ),
             endpoint_types=[aws_apigw.EndpointType.REGIONAL],
             cloud_watch_role=False,
-            binary_media_types=["*/*"],  # To enable PUT binary requests (S3 put)
             proxy=False,  # Proxy disabled to have more control
         )
 
         # API Key (used for authentication via "x-api-key" header in request)
         rest_api_key = self.api.add_api_key(
-            "RESTAPI-Key",
+            "RESTAPI-Key-Final",
             api_key_name=rest_api_name,
         )
         Tags.of(self.api).add("Name", rest_api_name)
 
         # API Usage Plan (to associate the API Key with the API Stage)
         usage_plan = self.api.add_usage_plan(
-            "RESTAPI-UsagePlan",
+            "RESTAPI-UsagePlan-Final",
             name=rest_api_name,
             api_stages=[
                 aws_apigw.UsagePlanPerApiStage(
@@ -638,11 +648,11 @@ class BackendStack(Stack):
             "documents",
             default_method_options=self.api_method_options_private,
         )
-        root_resource_upload = self.root_resource_v1.add_resource("upload")
-        root_resource_file = root_resource_upload.add_resource(
-            "{filename}",
-            default_method_options=self.api_method_options_private,
-        )
+        # root_resource_upload = self.root_resource_v1.add_resource("upload")
+        # root_resource_file = root_resource_upload.add_resource(
+        #     "{filename}",
+        #     default_method_options=self.api_method_options_private,
+        # )
 
         # Define all API-Lambda integrations for the API methods
         api_lambda_integration_documents = aws_apigw.LambdaIntegration(
@@ -667,55 +677,55 @@ class BackendStack(Stack):
             # default_method_options=self.api_method_options_private,
         )
 
-        # Configure PUT item to S3 object direct integration
-        role_api_gw = aws_iam.Role(
-            self,
-            "RESTAPI-ServiceRole",
-            description="IAM Role for API Gateway",
-            assumed_by=aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
-            path="/service-role/",
-        )
-        # Add action to put S3 Object to target S3 bucket
-        self.s3_bucket_receipts.grant_read_write(role_api_gw)
+        # # Configure PUT item to S3 object direct integration
+        # role_api_gw = aws_iam.Role(
+        #     self,
+        #     "RESTAPI-ServiceRole",
+        #     description="IAM Role for API Gateway",
+        #     assumed_by=aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
+        #     path="/service-role/",
+        # )
+        # # Add action to put S3 Object to target S3 bucket
+        # self.s3_bucket_receipts.grant_read_write(role_api_gw)
 
-        put_object_integration = aws_apigw.AwsIntegration(
-            service="s3",
-            integration_http_method="PUT",
-            path=f"{self.s3_bucket_receipts.bucket_name}/{{file}}",  # Converted to: {bucket-name}/{file}
-            options=aws_apigw.IntegrationOptions(
-                credentials_role=role_api_gw,
-                request_parameters={
-                    "integration.request.path.file": "method.request.path.filename",
-                    "integration.request.header.Accept": "method.request.header.Accept",
-                },
-                integration_responses=[
-                    aws_apigw.IntegrationResponse(
-                        status_code="200",
-                        response_parameters={
-                            "method.response.header.Content-Type": "integration.response.header.Content-Type",
-                        },
-                    )
-                ],
-            ),
-        )
-        root_resource_file.add_method(
-            "PUT",
-            put_object_integration,
-            authorization_type=aws_apigw.AuthorizationType.NONE,
-            method_responses=[
-                aws_apigw.MethodResponse(
-                    status_code="200",
-                    response_parameters={
-                        "method.response.header.Content-Type": True,
-                    },
-                )
-            ],
-            request_parameters={
-                "method.request.path.filename": True,
-                "method.request.header.Accept": True,
-                "method.request.header.Content-Type": True,
-            },
-        )
+        # put_object_integration = aws_apigw.AwsIntegration(
+        #     service="s3",
+        #     integration_http_method="PUT",
+        #     path=f"{self.s3_bucket_receipts.bucket_name}/{{file}}",  # Converted to: {bucket-name}/{file}
+        #     options=aws_apigw.IntegrationOptions(
+        #         credentials_role=role_api_gw,
+        #         request_parameters={
+        #             "integration.request.path.file": "method.request.path.filename",
+        #             "integration.request.header.Accept": "method.request.header.Accept",
+        #         },
+        #         integration_responses=[
+        #             aws_apigw.IntegrationResponse(
+        #                 status_code="200",
+        #                 response_parameters={
+        #                     "method.response.header.Content-Type": "integration.response.header.Content-Type",
+        #                 },
+        #             )
+        #         ],
+        #     ),
+        # )
+        # root_resource_file.add_method(
+        #     "PUT",
+        #     put_object_integration,
+        #     authorization_type=aws_apigw.AuthorizationType.NONE,
+        #     method_responses=[
+        #         aws_apigw.MethodResponse(
+        #             status_code="200",
+        #             response_parameters={
+        #                 "method.response.header.Content-Type": True,
+        #             },
+        #         )
+        #     ],
+        #     request_parameters={
+        #         "method.request.path.filename": True,
+        #         "method.request.header.Accept": True,
+        #         "method.request.header.Content-Type": True,
+        #     },
+        # )
 
     def create_rest_api_2(self):
         """
@@ -735,11 +745,10 @@ class BackendStack(Stack):
         self.s3_bucket_receipts.grant_read_write(self.api_gw_role)
 
         # Create REST API-GW for Uploading S3 objects via AWS Direct Integration
-        # Create IAM Role for API Gateway
         self.api2 = aws_apigw.RestApi(
             self,
-            "RESTAPI-2",
-            rest_api_name=f"{self.main_resources_name}-api-2",
+            "RESTAPI-3",
+            rest_api_name=f"{self.main_resources_name}-api-3",
             description=f"REST API Gateway 2 for {self.main_resources_name}",
             deploy_options=aws_apigw.StageOptions(
                 stage_name=self.deployment_environment,
@@ -758,22 +767,20 @@ class BackendStack(Stack):
         )
 
         # Define REST-API resources
-        root_resource_folder = self.api2.root.add_resource("{folder}")
-        self.root_resource_item = root_resource_folder.add_resource(
-            "{item}",
-            default_method_options=self.api_method_options_public,
-        )
+        root_resource_api = self.api2.root.add_resource("api")
+        root_resource_v1 = root_resource_api.add_resource("v1")
+        root_resource_upload = root_resource_v1.add_resource("upload")
+        root_resource_file = root_resource_upload.add_resource("{filename}")
 
-        # Integration towards S3 Buckets PUT OBJECTS
+        # PUT method integration
         put_object_integration = aws_apigw.AwsIntegration(
             service="s3",
             integration_http_method="PUT",
-            path="{bucket}/{object}",
+            path=f"{self.s3_bucket_receipts.bucket_name}/{{file}}",
             options=aws_apigw.IntegrationOptions(
                 credentials_role=self.api_gw_role,
                 request_parameters={
-                    "integration.request.path.bucket": "method.request.path.folder",
-                    "integration.request.path.object": "method.request.path.item",
+                    "integration.request.path.file": "method.request.path.filename",
                     "integration.request.header.Accept": "method.request.header.Accept",
                 },
                 integration_responses=[
@@ -781,12 +788,15 @@ class BackendStack(Stack):
                         status_code="200",
                         response_parameters={
                             "method.response.header.Content-Type": "integration.response.header.Content-Type",
+                            "method.response.header.Access-Control-Allow-Origin": "'*'",
+                            "method.response.header.Access-Control-Allow-Headers": "'*'",
+                            "method.response.header.Access-Control-Allow-Methods": "'PUT,OPTIONS'",
                         },
                     )
                 ],
             ),
         )
-        self.root_resource_item.add_method(
+        root_resource_file.add_method(
             "PUT",
             put_object_integration,
             authorization_type=aws_apigw.AuthorizationType.NONE,
@@ -795,12 +805,14 @@ class BackendStack(Stack):
                     status_code="200",
                     response_parameters={
                         "method.response.header.Content-Type": True,
+                        "method.response.header.Access-Control-Allow-Origin": True,
+                        "method.response.header.Access-Control-Allow-Headers": True,
+                        "method.response.header.Access-Control-Allow-Methods": True,
                     },
                 )
             ],
             request_parameters={
-                "method.request.path.folder": True,
-                "method.request.path.item": True,
+                "method.request.path.filename": True,
                 "method.request.header.Accept": True,
                 "method.request.header.Content-Type": True,
             },

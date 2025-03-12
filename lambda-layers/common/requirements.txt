@@ -6,3 +6,6 @@ pydantic
 pydantic_core
 requests==2.32.3
 python-ulid==2.2.0
+fpdf2==2.8.2
+# Pillow==11.1.0 # Used a custom layer instead...
+pytz==2025.1
