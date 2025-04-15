@@ -1,5 +1,6 @@
 # Built-in imports
 import os
+import json
 from datetime import datetime, timezone
 
 # Own imports
@@ -48,7 +49,13 @@ class SaveData(BaseStepFunction):
             "GSI1PK": "ALL_DOCUMENTS",  # GSI1 Used for retrieving latest "N" documents by timestamp
             "GSI1SK": f"CREATED_AT#{timestamp}",
             "last_processed": timestamp,
-            "data": self.event.get("response_process_document_json", "NOT_FOUND"),
+            "data_bedrock": self.event.get(
+                "response_process_document_json", "NOT_FOUND"
+            ),
+            "data_textract": json.dumps(
+                self.event.get("response_process_document_textract_json", "NOT_FOUND"),
+                default=str,
+            ),
             "input_type": self.event.get("input_type", "NOT_FOUND"),
             "correlation_id": self.event.get("correlation_id", "NOT_FOUND"),
             "s3_key_original_asset": self.event.get(

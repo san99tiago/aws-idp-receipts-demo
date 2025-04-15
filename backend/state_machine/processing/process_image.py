@@ -15,9 +15,10 @@ logger = custom_logger()
 S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 BEDROCK_LLM_MODEL_ID = os.environ.get("BEDROCK_LLM_MODEL_ID")
 
-# Initialize S3 and Bedrock clients
+# Initialize S3, Bedrock and Textract clients
 s3_client = boto3.client("s3")
 bedrock_client = boto3.client("bedrock-runtime")
+textract_client = boto3.client("textract")
 
 
 class ProcessImage(BaseStepFunction):
@@ -35,10 +36,17 @@ class ProcessImage(BaseStepFunction):
 
         self.logger.info("Starting process_image for the IDP")
 
-        # TODO: Validate if Textract or Rekognition is worth it for the use case as Backup plan?
+        # Process the image using Bedrock
         self.process_image_from_s3(
             s3_image_key=self.event.get("s3_key_original_asset"),
         )
+
+        # Only process passport data with textract if detected key. Else NONE
+        if "passport" in self.event.get("s3_key_original_asset"):
+            # Process the image using Textract
+            self.process_image_with_textract(
+                s3_image_key=self.event.get("s3_key_original_asset"),
+            )
 
         self.logger.info("Processing image finished successfully")
 
@@ -122,3 +130,33 @@ class ProcessImage(BaseStepFunction):
         self.event["response_process_document_json"] = json_response
 
         return json_response
+
+    def process_image_with_textract(self, s3_image_key: str):
+        """
+        Uses Amazon Textract to analyze an ID document stored in S3
+        and adds the analysis result to the event.
+
+        :param s3_image_key: The key of the image in the S3 bucket.
+        """
+        self.logger.info("Starting Textract analyze_id")
+
+        try:
+            # Call Textract AnalyzeId API
+            response = textract_client.analyze_id(
+                DocumentPages=[
+                    {
+                        "S3Object": {
+                            "Bucket": S3_BUCKET_NAME,
+                            "Name": s3_image_key,
+                        }
+                    }
+                ]
+            )
+            self.logger.debug(response, extra_message="Textract analyze_id response")
+
+            # Store the response in the event
+            self.event["response_process_document_textract_json"] = response
+            self.logger.info("Textract analyze_id completed successfully")
+        except Exception as e:
+            self.logger.error(f"Error processing image with Textract: {e}")
+            raise

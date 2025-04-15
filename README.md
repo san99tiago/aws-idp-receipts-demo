@@ -4,7 +4,7 @@
 
 ## Architecture (WIP)
 
-<img src="assets/architecture_v1.png" width=90%> <br>
+<img src="assets/architecture_v2.png" width=90%> <br>
 
 ## LICENSE
 

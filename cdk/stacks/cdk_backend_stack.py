@@ -230,6 +230,11 @@ class BackendStack(Stack):
                 "AmazonBedrockFullAccess",
             ),
         )
+        self.lambda_state_machine_process_idp_processing.role.add_managed_policy(
+            aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonTextractFullAccess",
+            ),
+        )
 
         # Lambda Function for managing CRUD operations on "DOCUMENTS"
         self.lambda_documents_api: aws_lambda.Function = aws_lambda.Function(
